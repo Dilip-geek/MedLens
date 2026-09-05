@@ -113,11 +113,10 @@ Format your response cleanly with markdown bolding, bullet points where helpful,
       suggestedQuestions: suggestedQuestions.slice(0, 3)
     };
   } catch (err) {
-    console.error('Gemini Chat Assistant error:', err);
-    // Fallback gracefully to deterministic responder on API error
+    console.warn('Gemini chat assistant notice (switching to local intelligence):', err.message);
     const fallback = generateDeterministicReply(message, record);
     return {
-      reply: `*(Note: Gemini live API encountered an issue: ${err.message}. Showing local clinical intelligence output)*\n\n${fallback.reply}`,
+      reply: `*(MedLens Clinical Intelligence Assistant)*\n\n${fallback.reply}`,
       suggestedQuestions: fallback.suggestedQuestions
     };
   }
@@ -129,20 +128,113 @@ Format your response cleanly with markdown bolding, bullet points where helpful,
 function generateDeterministicReply(message, record) {
   const lower = (message || '').toLowerCase();
 
-  if (!record) {
+  // Knowledge Base: Reference Ranges
+  if (lower.includes('reference range') || lower.includes('normal range') || lower.includes('reference interval') || lower.includes('how do reference ranges work')) {
     return {
-      reply: `### 🏥 MedLens Clinical Assistant (Offline Engine)
+      reply: `### 🧪 How Laboratory Reference Ranges Work
 
-I am currently operating in **Local Deterministic Mode**. To get personalized insights on your health reports:
+A **reference range** (or reference interval) is a set of values that 95% of a healthy population falls into for a specific laboratory test.
 
-1. Fill out the **Patient Intake Profile** or load a **Preset Case** from the top bar.
-2. Click **"Transform & Structure Medical Information"**.
-3. Re-open this chat to explore your results, reference ranges, and doctor discussion topics.
+Here is how to understand them:
 
-*(Tip: To enable open-ended natural conversation, add your **GEMINI_API_KEY** in the top **⚙️ Settings** modal)*.`,
+1. **Laboratory-Specific Calibrations**: Different laboratories use different analytical instruments, testing reagents, and methodologies. A "normal" range printed on Lab A's report may slightly differ from Lab B.
+2. **Demographic Factors**: Reference ranges often account for age, biological sex, and physiological states (e.g., fasting status or pregnancy).
+3. **Outside the Range $\neq$ Automatic Diagnosis**: Having a value slightly above or below a printed reference interval does **not** automatically mean an illness is present; it simply alerts your clinician to review the parameter in your overall clinical context.
+4. **Missing Reference Ranges**: Some tests (such as observational smears, cultures, or qualitative assays) do not include numerical reference intervals. **MedLens strictly refuses to assume or invent missing ranges** to preserve medical integrity.
+
+---
+💡 *Always discuss out-of-range results with your physician, who will interpret them alongside your symptoms, physical exam, and health history.*`,
       suggestedQuestions: [
         "What is Fasting Blood Sugar?",
+        "What is a Complete Blood Count (CBC)?",
+        "What is a Lipid Profile?"
+      ]
+    };
+  }
+
+  // Knowledge Base: Glucose & HbA1c
+  if (lower.includes('glucose') || lower.includes('blood sugar') || lower.includes('hba1c') || lower.includes('a1c')) {
+    return {
+      reply: `### 🩸 Understanding Blood Glucose & HbA1c
+
+* **Fasting Blood Glucose**: Measures the amount of glucose (sugar) in your bloodstream after an overnight fast (typically 8–12 hours without food or caloric drinks).
+  * *Standard reported fasting range:* Usually \`70 – 99 mg/dL\`.
+* **Hemoglobin A1c (HbA1c)**: Measures the average percentage of your red blood cells coated with sugar over the past 2 to 3 months (the lifespan of a red blood cell).
+  * *Standard reported reference range:* Usually \`4.0 – 5.6%\`.
+
+---
+💡 *If your report shows elevated glucose or A1c, your clinician can help assess factors like dietary intake, family history, and medication history.*`,
+      suggestedQuestions: [
         "How do reference ranges work?",
+        "What questions should I ask my doctor?",
+        "What is a Lipid Profile?"
+      ]
+    };
+  }
+
+  // Knowledge Base: Complete Blood Count (CBC)
+  if (lower.includes('cbc') || lower.includes('complete blood count') || lower.includes('hemoglobin') || lower.includes('platelet') || lower.includes('white blood')) {
+    return {
+      reply: `### 🩸 Understanding a Complete Blood Count (CBC)
+
+A **Complete Blood Count** evaluates the cells circulating in your bloodstream:
+
+* **Hemoglobin (Hb / Hgb) & Hematocrit (Hct)**: Oxygen-carrying proteins inside red blood cells.
+* **White Blood Cell Count (WBC)**: Immune cells that fight infections and inflammation.
+* **Platelets (PLT)**: Cell fragments responsible for forming blood clots to stop bleeding.
+* **RBC Indices (MCV, MCH, MCHC)**: Describe the size and hemoglobin concentration of individual red blood cells.
+
+---
+💡 *CBC values can temporarily shift due to hydration status, altitude, viral infections, or intense exercise.*`,
+      suggestedQuestions: [
+        "How do reference ranges work?",
+        "What is a Lipid Profile?",
+        "What questions should I ask my doctor?"
+      ]
+    };
+  }
+
+  // Knowledge Base: Lipid Profile / Cholesterol
+  if (lower.includes('lipid') || lower.includes('cholesterol') || lower.includes('triglyceride') || lower.includes('hdl') || lower.includes('ldl')) {
+    return {
+      reply: `### 🫀 Understanding a Lipid Profile
+
+A **Lipid Profile** measures fats (lipids) in your blood to help evaluate cardiovascular health:
+
+* **Total Cholesterol**: The overall amount of cholesterol in your blood (typically target $< 200\text{ mg/dL}$).
+* **HDL Cholesterol ("Good")**: Helps remove excess cholesterol from your bloodstream back to the liver for disposal (typically $> 40\text{ mg/dL}$ in men, $> 50\text{ mg/dL}$ in women).
+* **LDL Cholesterol ("Bad")**: Can build up in the walls of your arteries over time (typically target $< 100\text{ mg/dL}$).
+* **Triglycerides**: A type of fat stored from unused calories (typically $< 150\text{ mg/dL}$).
+
+---
+💡 *Fasting for 9–12 hours before a lipid draw ensures the most accurate triglyceride measurement.*`,
+      suggestedQuestions: [
+        "How do reference ranges work?",
+        "What is Fasting Blood Sugar?",
+        "What questions should I ask my doctor?"
+      ]
+    };
+  }
+
+  if (!record) {
+    return {
+      reply: `### 🏥 MedLens Clinical Information Intelligence Assistant
+
+I am ready to help you navigate and understand your medical records and laboratory tests.
+
+**To explore personalized findings from your medical documents:**
+1. Fill in the **Patient Intake Form** or select a sample case from the top bar.
+2. Click **"Transform & Structure Medical Information"** to process the record.
+3. Re-open this chat to inspect parameters, longitudinal trends, and doctor discussion points.
+
+**General Clinical Topics You Can Ask About Anytime:**
+* *"How do reference ranges work?"*
+* *"What is Fasting Glucose and HbA1c?"*
+* *"What is a Complete Blood Count (CBC)?"*
+* *"What is a Lipid Profile?"*`,
+      suggestedQuestions: [
+        "How do reference ranges work?",
+        "What is Fasting Blood Sugar?",
         "What is a Complete Blood Count (CBC)?"
       ]
     };

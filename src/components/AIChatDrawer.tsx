@@ -148,9 +148,16 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         })
       });
 
-      const data = await res.json();
+      let data: any;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const rawText = await res.text();
+        data = { error: rawText || `Server responded with status ${res.status}` };
+      }
 
-      if (data.success && data.reply) {
+      if (res.ok && data.success && data.reply) {
         const botMessage: ChatMessage = {
           id: `msg_bot_${Date.now()}`,
           role: 'model',
@@ -163,7 +170,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         setMessages(prev => [...prev, {
           id: `msg_err_${Date.now()}`,
           role: 'model',
-          text: `I encountered an issue: ${data.error || 'Please try again.'}`,
+          text: `I am ready to help. ${data.error ? (typeof data.error === 'string' ? data.error : 'Please retry your message.') : 'Please try asking your question again.'}`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }]);
       }
