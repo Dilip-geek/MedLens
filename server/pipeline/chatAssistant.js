@@ -88,7 +88,10 @@ Format your response cleanly with markdown bolding, bullet points where helpful,
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
-      contents
+      contents,
+      config: {
+        maxOutputTokens: 600
+      }
     });
 
     const reply = response.text || "I was unable to generate a response. Please try rephrasing your question.";

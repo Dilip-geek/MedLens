@@ -51,13 +51,21 @@ Respond in pure valid JSON with the following schema:
   ]
 }`;
 
-    const response = await ai.models.generateContent({
+    const apiPromise = ai.models.generateContent({
       model: 'gemini-3.6-flash',
       contents: prompt,
       config: {
-        responseMimeType: 'application/json'
+        responseMimeType: 'application/json',
+        maxOutputTokens: 350
       }
     });
+
+    // 4.5 second timeout safeguard so users never experience sluggish UI hangs
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Gemini latency safeguard triggered (exceeded 4.5s). Local clinical engine active.')), 4500)
+    );
+
+    const response = await Promise.race([apiPromise, timeoutPromise]);
 
     const text = response.text;
     const parsed = JSON.parse(text);
@@ -68,7 +76,7 @@ Respond in pure valid JSON with the following schema:
       geminiData: parsed
     };
   } catch (err) {
-    console.warn('Gemini enhancement warning (graceful fallback active):', err.message);
+    console.warn('Gemini enhancement warning (graceful fast fallback active):', err.message);
     return {
       enhanced: false,
       reason: `Gemini API call skipped: ${err.message}`
