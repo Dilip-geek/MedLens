@@ -9,6 +9,8 @@ interface HeaderProps {
   onSelectPreset: (presetId: string) => void;
   onOpenSettings: () => void;
   onPrint: () => void;
+  onToggleChat?: () => void;
+  isChatOpen?: boolean;
   hasRecord: boolean;
   geminiActive: boolean;
 }
@@ -20,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectPreset,
   onOpenSettings,
   onPrint,
+  onToggleChat,
+  isChatOpen,
   hasRecord,
   geminiActive
 }) => {
@@ -122,6 +126,19 @@ export const Header: React.FC<HeaderProps> = ({
               </>
             )}
           </button>
+
+          {/* AI Chat Assistant */}
+          {onToggleChat && (
+            <button
+              onClick={onToggleChat}
+              className={`btn btn-sm ${isChatOpen ? 'btn-primary' : 'btn-secondary'}`}
+              title="Open MedLens AI Clinical Assistant"
+              aria-label="Toggle Clinical Chatbot"
+            >
+              <Sparkles size={14} />
+              <span>AI Assistant</span>
+            </button>
+          )}
 
           {/* Print / Export Report */}
           {hasRecord && (

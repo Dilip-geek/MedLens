@@ -71,6 +71,7 @@ export const App: React.FC = () => {
   const [editingParam, setEditingParam] = useState<ExtractedParameter | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
 
   // Apply theme to document
   useEffect(() => {
@@ -277,6 +278,8 @@ export const App: React.FC = () => {
         onSelectPreset={handleSelectPreset}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onPrint={() => setIsPrintOpen(true)}
+        onToggleChat={() => setIsChatOpen(prev => !prev)}
+        isChatOpen={isChatOpen}
         hasRecord={!!record}
         geminiActive={!!(apiKey || (record?.geminiEnhancement?.enhanced))}
       />
@@ -477,6 +480,44 @@ export const App: React.FC = () => {
         isOpen={isPrintOpen}
         onClose={() => setIsPrintOpen(false)}
       />
+
+      {/* Grounded Clinical AI Chat Drawer */}
+      <AIChatDrawer
+        record={record}
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        onOpen={() => setIsChatOpen(true)}
+        apiKey={apiKey}
+      />
+
+      {/* Floating Chat Trigger Button */}
+      <button
+        onClick={() => setIsChatOpen(true)}
+        className="btn"
+        style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 80,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '12px 20px',
+          borderRadius: 30,
+          background: 'linear-gradient(135deg, var(--teal-600), var(--cyan-500))',
+          color: '#ffffff',
+          border: 'none',
+          boxShadow: '0 8px 24px rgba(13, 148, 136, 0.4)',
+          fontWeight: 700,
+          fontSize: 14,
+          cursor: 'pointer'
+        }}
+        title="Open MedLens AI Clinical Assistant"
+        aria-label="Open AI Assistant"
+      >
+        <Sparkles size={18} />
+        <span>Ask Clinical AI</span>
+      </button>
 
       {/* Footer */}
       <footer style={{
