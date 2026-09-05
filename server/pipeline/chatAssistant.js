@@ -63,22 +63,14 @@ MANDATORY SAFETY BOUNDARIES:
 
 Format your response cleanly with markdown bolding, bullet points where helpful, and a short empathetic closing.`;
 
-    const contents = [
-      {
-        role: 'user',
-        parts: [{ text: `${systemInstruction}\n\n${recordContext}\n\nPlease review this context and prepare to answer questions.` }]
-      },
-      {
-        role: 'model',
-        parts: [{ text: "Understood. I am MedLens AI, ready to help you navigate and understand your medical record, laboratory findings, and trend history within strict non-diagnostic safety guidelines. How can I assist you today?" }]
-      }
-    ];
-
+    const contents = [];
     for (const msg of conversationHistory) {
-      contents.push({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text }]
-      });
+      if (msg.text && typeof msg.text === 'string' && msg.text.trim()) {
+        contents.push({
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.text }]
+        });
+      }
     }
 
     contents.push({
@@ -90,7 +82,9 @@ Format your response cleanly with markdown bolding, bullet points where helpful,
       model: 'gemini-3.6-flash',
       contents,
       config: {
-        maxOutputTokens: 600
+        systemInstruction: `${systemInstruction}\n\n${recordContext}`,
+        maxOutputTokens: 800,
+        temperature: 0.7
       }
     });
 
@@ -139,7 +133,7 @@ Here is how to understand them:
 
 1. **Laboratory-Specific Calibrations**: Different laboratories use different analytical instruments, testing reagents, and methodologies. A "normal" range printed on Lab A's report may slightly differ from Lab B.
 2. **Demographic Factors**: Reference ranges often account for age, biological sex, and physiological states (e.g., fasting status or pregnancy).
-3. **Outside the Range $\neq$ Automatic Diagnosis**: Having a value slightly above or below a printed reference interval does **not** automatically mean an illness is present; it simply alerts your clinician to review the parameter in your overall clinical context.
+3. **Outside the Range $\\neq$ Automatic Diagnosis**: Having a value slightly above or below a printed reference interval does **not** automatically mean an illness is present; it simply alerts your clinician to review the parameter in your overall clinical context.
 4. **Missing Reference Ranges**: Some tests (such as observational smears, cultures, or qualitative assays) do not include numerical reference intervals. **MedLens strictly refuses to assume or invent missing ranges** to preserve medical integrity.
 
 ---
@@ -150,6 +144,58 @@ Here is how to understand them:
         "What is a Lipid Profile?"
       ]
     };
+  }
+
+  // Dynamic Parameter Lookup (Matches any parameter extracted from the active patient record)
+  if (record && Array.isArray(record.parameters) && record.parameters.length > 0) {
+    const matchedParam = record.parameters.find(p => {
+      const pName = (p.canonicalName || '').toLowerCase();
+      const rawName = (p.rawParamName || '').toLowerCase();
+      return (
+        lower.includes(pName) ||
+        lower.includes(rawName) ||
+        (pName.includes('glucose') && (lower.includes('glucose') || lower.includes('sugar'))) ||
+        (pName.includes('creatinine') && lower.includes('creatinine')) ||
+        (pName.includes('cholesterol') && lower.includes('cholesterol')) ||
+        (pName.includes('hemoglobin') && (lower.includes('hemoglobin') || lower.includes('hgb') || lower.includes('hb'))) ||
+        (pName.includes('platelet') && lower.includes('platelet')) ||
+        (pName.includes('wbc') && (lower.includes('wbc') || lower.includes('white blood'))) ||
+        (pName.includes('bun') && (lower.includes('bun') || lower.includes('urea'))) ||
+        (pName.includes('triglyceride') && lower.includes('triglyceride')) ||
+        (pName.includes('hdl') && lower.includes('hdl')) ||
+        (pName.includes('ldl') && lower.includes('ldl')) ||
+        (pName.includes('potassium') && lower.includes('potassium')) ||
+        (pName.includes('sodium') && lower.includes('sodium')) ||
+        (pName.includes('alt') && lower.includes('alt')) ||
+        (pName.includes('ast') && lower.includes('ast')) ||
+        (pName.includes('tsh') && lower.includes('tsh'))
+      );
+    });
+
+    if (matchedParam) {
+      const statusEmoji = matchedParam.isOutOfRange ? '⚠️' : '✅';
+      const rangeText = matchedParam.rawRangeText || 'None reported in source document';
+      return {
+        reply: `### ${statusEmoji} **${matchedParam.canonicalName}** Detailed Review
+
+* **Observed Value:** **${matchedParam.observedValue} ${matchedParam.unit}**
+* **Status:** \`${matchedParam.statusLabel}\` (${matchedParam.status})
+* **Reported Reference Range:** \`${rangeText}\`
+* **Clinical Panel:** ${matchedParam.panel}
+* **Source Attribution:** ${matchedParam.sourceLabel || 'Current Laboratory Report'}
+
+**Clinical Context & Rationale:**
+${matchedParam.interpretation || `${matchedParam.canonicalName} is a laboratory biomarker evaluated as part of the ${matchedParam.panel} panel.`}
+
+---
+💡 *MedLens is an information intelligence tool. Bring this result to your healthcare consultation to discuss how it correlates with your overall health.*`,
+        suggestedQuestions: [
+          "Explain my other out-of-range results",
+          "What questions should I ask my doctor about this?",
+          "Compare with previous test"
+        ]
+      };
+    }
   }
 
   // Knowledge Base: Glucose & HbA1c
@@ -201,10 +247,10 @@ A **Complete Blood Count** evaluates the cells circulating in your bloodstream:
 
 A **Lipid Profile** measures fats (lipids) in your blood to help evaluate cardiovascular health:
 
-* **Total Cholesterol**: The overall amount of cholesterol in your blood (typically target $< 200\text{ mg/dL}$).
-* **HDL Cholesterol ("Good")**: Helps remove excess cholesterol from your bloodstream back to the liver for disposal (typically $> 40\text{ mg/dL}$ in men, $> 50\text{ mg/dL}$ in women).
-* **LDL Cholesterol ("Bad")**: Can build up in the walls of your arteries over time (typically target $< 100\text{ mg/dL}$).
-* **Triglycerides**: A type of fat stored from unused calories (typically $< 150\text{ mg/dL}$).
+* **Total Cholesterol**: The overall amount of cholesterol in your blood (typically target $< 200\\text{ mg/dL}$).
+* **HDL Cholesterol ("Good")**: Helps remove excess cholesterol from your bloodstream back to the liver for disposal (typically $> 40\\text{ mg/dL}$ in men, $> 50\\text{ mg/dL}$ in women).
+* **LDL Cholesterol ("Bad")**: Can build up in the walls of your arteries over time (typically target $< 100\\text{ mg/dL}$).
+* **Triglycerides**: A type of fat stored from unused calories (typically $< 150\\text{ mg/dL}$).
 
 ---
 💡 *Fasting for 9–12 hours before a lipid draw ensures the most accurate triglyceride measurement.*`,
@@ -214,6 +260,54 @@ A **Lipid Profile** measures fats (lipids) in your blood to help evaluate cardio
         "What questions should I ask my doctor?"
       ]
     };
+  }
+
+  // Inquiries about Patient Intake Profile (Allergies, Medications, Symptoms)
+  if (record && record.intake) {
+    if (lower.includes('allerg') || lower.includes('reaction')) {
+      return {
+        reply: `### 🛡️ Documented Allergy Profile for **${record.intake.name || 'Patient'}**
+
+* **Known Allergies Recorded:** ${record.intake.allergies || 'None reported in intake form.'}
+
+${record.conflicts.some(c => c.category === 'ALLERGY_CONFLICT') 
+  ? `> **⚠️ Flagged Contradiction:** MedLens detected an allergy discrepancy between your intake form and past medical notes. Please review the Inconsistencies tab.`
+  : 'All documented records align with this allergy profile.'}
+
+---
+*Always notify your clinic and pharmacy of any known drug or environmental allergies.*`,
+        suggestedQuestions: ["Explain any conflicts in my record", "What questions should I ask my doctor?"]
+      };
+    }
+
+    if (lower.includes('medic') || lower.includes('drug') || lower.includes('prescription')) {
+      return {
+        reply: `### 💊 Documented Medications
+
+* **Active Medications on Intake:** ${record.intake.medications || 'None listed in intake form.'}
+
+${record.conflicts.some(c => c.category === 'MEDICATION_CONFLICT')
+  ? `> **⚠️ Note on Historical Records:** Previous clinical notes mention past or omitted medications that were not listed on your intake form. Verify current active dosages with your doctor.`
+  : 'MedLens does not alter or recommend medication dosages.'}
+
+---
+*Remember to bring a complete list of your prescription and over-the-counter medications to your consultation.*`,
+        suggestedQuestions: ["What questions should I ask my doctor?", "Explain my out-of-range results"]
+      };
+    }
+
+    if (lower.includes('symptom') || lower.includes('feeling') || lower.includes('pain') || lower.includes('fatigue')) {
+      return {
+        reply: `### 🩺 Documented Patient Symptoms
+
+* **Reported Chief Complaints:** ${record.intake.symptoms || 'No specific symptoms entered during intake.'}
+* **Existing Chronic Conditions:** ${record.intake.conditions || 'None listed.'}
+
+---
+💡 *Your physician will correlate your laboratory results with these reported symptoms during your clinical assessment.*`,
+        suggestedQuestions: ["What questions should I ask my doctor?", "Explain my out-of-range results"]
+      };
+    }
   }
 
   if (!record) {
@@ -282,7 +376,7 @@ ${items}
   // 2. Doctor consultation questions
   if (lower.includes('ask') || lower.includes('doctor') || lower.includes('physician') || lower.includes('appointment') || lower.includes('consultation')) {
     const qList = questions.length > 0 
-      ? questions.map((q, idx) => `${idx + 1}. **${q.question}**\n   *Reason:* ${q.reason}`).join('\n\n')
+      ? questions.map((q, idx) => `${idx + 1}. **${q.question}**\n   *Reason:* ${q.reason || q.context}`).join('\n\n')
       : "1. How do my current laboratory results relate to my reported symptoms?\n2. Are there any follow-up tests or lifestyle recommendations you suggest?";
 
     return {
