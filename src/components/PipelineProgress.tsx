@@ -24,7 +24,7 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({
   ];
 
   return (
-    <div className="card" style={{ padding: '16px 20px', marginBottom: 24 }}>
+    <div className="card" role="status" aria-live="polite" style={{ padding: '16px 20px', marginBottom: 24 }}>
       <div style={{
         display: 'flex',
         alignItems: 'center',

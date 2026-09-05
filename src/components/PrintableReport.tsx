@@ -13,6 +13,16 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
   isOpen,
   onClose
 }) => {
+  // Handle Escape key to close modal
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !record) return null;
 
   const handlePrint = () => {
@@ -22,20 +32,25 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
   const { intake, parameters, conflicts, clarificationQuestions, summary, disclaimer } = record;
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.8)',
-      backdropFilter: 'blur(6px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 100,
-      padding: 16
-    }}>
+    <div 
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="printable-report-title"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.8)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+        padding: 16
+      }}
+    >
       <div className="card" style={{
         maxWidth: 820,
         width: '100%',
@@ -61,7 +76,11 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
             <button onClick={handlePrint} className="btn btn-primary btn-sm">
               <Printer size={14} /> Print / Save as PDF
             </button>
-            <button onClick={onClose} className="btn btn-secondary btn-sm">
+            <button 
+              onClick={onClose} 
+              className="btn btn-secondary btn-sm"
+              aria-label="Close export preview"
+            >
               <X size={14} /> Close
             </button>
           </div>
@@ -73,7 +92,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
           <div style={{ borderBottom: '3px solid #0f766e', paddingBottom: 12, marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h1 style={{ fontSize: 24, color: '#0f766e', margin: 0, fontWeight: 800 }}>
+                <h1 id="printable-report-title" style={{ fontSize: 24, color: '#0f766e', margin: 0, fontWeight: 800 }}>
                   MedLens Patient Clinical Record Summary
                 </h1>
                 <p style={{ margin: '3px 0 0 0', fontSize: 12, color: '#64748b' }}>
@@ -135,14 +154,14 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
             <h2 style={{ fontSize: 14, color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: 4, marginBottom: 8, fontWeight: 700 }}>
               Extracted Laboratory Findings
             </h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }} aria-label="Extracted Laboratory Findings Table">
               <thead>
                 <tr style={{ background: '#f1f5f9', textAlign: 'left' }}>
-                  <th style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Test / Parameter</th>
-                  <th style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Observed Value</th>
-                  <th style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Reported Range</th>
-                  <th style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Status</th>
-                  <th style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Verification</th>
+                  <th scope="col" style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Test / Parameter</th>
+                  <th scope="col" style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Observed Value</th>
+                  <th scope="col" style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Reported Range</th>
+                  <th scope="col" style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Status</th>
+                  <th scope="col" style={{ padding: '6px 10px', border: '1px solid #cbd5e1' }}>Verification</th>
                 </tr>
               </thead>
               <tbody>

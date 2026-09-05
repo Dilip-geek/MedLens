@@ -19,6 +19,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [inputKey, setInputKey] = useState(apiKey);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  // Sync inputKey with apiKey prop
+  React.useEffect(() => {
+    setInputKey(apiKey);
+  }, [apiKey, isOpen]);
+
+  // Handle Escape key to close modal
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSave = () => {
@@ -31,27 +46,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.75)',
-      backdropFilter: 'blur(6px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 100,
-      padding: 16
-    }}>
+    <div 
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-modal-title"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.75)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+        padding: 16
+      }}
+    >
       <div className="card" style={{ maxWidth: 500, width: '100%', boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)' }}>
         <div className="card-header">
-          <div className="card-title">
+          <div className="card-title" id="settings-modal-title">
             <Shield size={18} style={{ color: 'var(--teal-500)' }} />
             <span>AI Engine & Security Configuration</span>
           </div>
-          <button onClick={onClose} className="btn btn-secondary btn-sm" style={{ padding: '6px 8px' }}>
+          <button 
+            onClick={onClose} 
+            className="btn btn-secondary btn-sm" 
+            style={{ padding: '6px 8px' }}
+            aria-label="Close configuration modal"
+          >
             <X size={15} />
           </button>
         </div>

@@ -38,6 +38,16 @@ export const HumanReviewModal: React.FC<HumanReviewModalProps> = ({
     }
   }, [param]);
 
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !param) return null;
 
   const handleSave = () => {
@@ -75,20 +85,25 @@ export const HumanReviewModal: React.FC<HumanReviewModalProps> = ({
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.75)',
-      backdropFilter: 'blur(6px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 100,
-      padding: 16
-    }}>
+    <div 
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="human-review-title"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.75)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+        padding: 16
+      }}
+    >
       <div className="card" style={{
         maxWidth: 580,
         width: '100%',
@@ -97,7 +112,7 @@ export const HumanReviewModal: React.FC<HumanReviewModalProps> = ({
         boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)'
       }}>
         <div className="card-header">
-          <div className="card-title">
+          <div className="card-title" id="human-review-title">
             <Edit3 size={18} style={{ color: 'var(--teal-500)' }} />
             <span>Human Review & Clinical Audit</span>
           </div>

@@ -32,6 +32,17 @@ interface AIChatDrawerProps {
   apiKey: string;
 }
 
+// Safe HTML escape helper for message rendering to prevent XSS
+const escapeHtmlClient = (str: string): string => {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
 export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   record,
   isOpen,
@@ -44,12 +55,13 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   const [isTyping, setIsTyping] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Initialize welcome message when record changes
   useEffect(() => {
     const patientName = record?.intake?.name ? record.intake.name.split(' ')[0] : 'there';
     const welcomeText = record
-      ? `Hello! I am MedLens AI, your clinical information intelligence assistant powered by **Gemini 3.6 Flash**.\n\nI have indexed the clinical record for **${record.intake?.name || 'the patient'}** (${record.parameters.length} parameters, ${record.summary?.outOfRangeCount || 0} out-of-range findings, ${record.conflicts?.length || 0} flagged inconsistencies).\n\nHow can I help you understand these findings or prepare for your next consultation?`
+      ? `Hello! I am MedLens AI, your clinical information intelligence assistant powered by **Gemini 2.5 Flash**.\n\nI have indexed the clinical record for **${record.intake?.name || 'the patient'}** (${record.parameters.length} parameters, ${record.summary?.outOfRangeCount || 0} out-of-range findings, ${record.conflicts?.length || 0} flagged inconsistencies).\n\nHow can I help you understand these findings or prepare for your next consultation?`
       : `Hello! I am MedLens AI. You can ask me questions about medical laboratory terminology, reference ranges, or process a medical report above to get personalized grounded explanations.`;
 
     setMessages([
@@ -72,6 +84,15 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
     ]);
   }, [record?.intake?.name, record?.parameters?.length]);
 
+  // Clean up abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   // Scroll to bottom on new message
   useEffect(() => {
     if (isOpen) {
@@ -82,6 +103,18 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   const handleSendMessage = async (textToSend?: string) => {
     const messageText = (textToSend || inputValue).trim();
     if (!messageText || isTyping) return;
+
+    if (messageText.length > 4000) {
+      alert('Message is too long. Please shorten it to under 4,000 characters.');
+      return;
+    }
+
+    // Cancel any previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     const userMessage: ChatMessage = {
       id: `msg_user_${Date.now()}`,
@@ -106,6 +139,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           message: messageText,
           conversationHistory: historyForApi,
@@ -134,6 +168,9 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         }]);
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return; // Request was cancelled by user
+      }
       setMessages(prev => [...prev, {
         id: `msg_err_${Date.now()}`,
         role: 'model',
@@ -168,28 +205,31 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
     ]);
   };
 
-  // Render markdown bold and bullet points cleanly
+  // Render markdown bold and bullet points safely without XSS
   const renderMessageContent = (text: string) => {
     const lines = text.split(/\r?\n/);
     return lines.map((line, idx) => {
+      // Escape HTML first to prevent XSS
+      const safeLine = escapeHtmlClient(line);
+
       // Headers
       if (line.startsWith('### ')) {
         return (
           <h4 key={idx} style={{ fontSize: 14, fontWeight: 700, color: 'var(--teal-500)', margin: '10px 0 4px 0' }}>
-            {line.replace('### ', '')}
+            {safeLine.replace('### ', '')}
           </h4>
         );
       }
       if (line.startsWith('## ')) {
         return (
           <h3 key={idx} style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-highlight)', margin: '12px 0 6px 0' }}>
-            {line.replace('## ', '')}
+            {safeLine.replace('## ', '')}
           </h3>
         );
       }
       // Bullets
       if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
-        const bulletText = line.trim().substring(2);
+        const bulletText = safeLine.trim().substring(2);
         return (
           <li key={idx} style={{ marginLeft: 18, marginBottom: 4, lineHeight: 1.5 }}>
             <span dangerouslySetInnerHTML={{
@@ -205,7 +245,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
       // Normal paragraph
       return (
         <p key={idx} style={{ margin: '0 0 6px 0', lineHeight: 1.5 }} dangerouslySetInnerHTML={{
-          __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')
+          __html: safeLine.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')
         }} />
       );
     });

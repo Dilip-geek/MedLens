@@ -10,6 +10,9 @@ interface ReportInputProps {
   isLoading: boolean;
 }
 
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB limit
+const ALLOWED_EXTENSIONS = ['.txt', '.csv', '.json', '.log'];
+
 export const ReportInput: React.FC<ReportInputProps> = ({
   currentReport,
   previousReport,
@@ -20,20 +23,38 @@ export const ReportInput: React.FC<ReportInputProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'current' | 'previous'>('current');
   const [dragOver, setDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const currentFileInputRef = useRef<HTMLInputElement>(null);
   const previousFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (file: File, target: 'current' | 'previous') => {
     if (!file) return;
+    setUploadError(null);
 
-    // Check extension
+    // 1. File size validation
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setUploadError(`File "${file.name}" exceeds the maximum allowed size of 10 MB.`);
+      return;
+    }
+
+    // 2. Extension validation
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext) && !file.type.startsWith('text/')) {
+      setUploadError(`Unsupported file format "${ext}". Please upload a text document (.txt, .csv, .json, .log).`);
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
       if (text) {
         if (target === 'current') onCurrentChange(text);
         else onPreviousChange(text);
+        setUploadError(null);
       }
+    };
+    reader.onerror = () => {
+      setUploadError(`Could not read file "${file.name}". The file may be corrupted or inaccessible.`);
     };
     reader.readAsText(file);
   };
@@ -117,6 +138,32 @@ export const ReportInput: React.FC<ReportInputProps> = ({
               )}
             </div>
           </div>
+
+          {uploadError && (
+            <div style={{
+              background: 'rgba(244, 63, 94, 0.12)',
+              border: '1px solid rgba(244, 63, 94, 0.3)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '8px 12px',
+              fontSize: 12,
+              color: 'var(--status-critical)',
+              marginBottom: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }} role="alert">
+              <span>⚠️ {uploadError}</span>
+              <button 
+                type="button" 
+                onClick={() => setUploadError(null)} 
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '2px 6px', fontSize: 11 }}
+                aria-label="Dismiss upload error"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           <div
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}

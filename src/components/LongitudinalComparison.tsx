@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   History, 
   TrendingUp, 
@@ -43,14 +43,16 @@ export const LongitudinalComparison: React.FC<LongitudinalComparisonProps> = ({ 
 
   const { stats, items } = comparison;
 
-  const filteredItems = items.filter(item => {
-    if (filterCategory === 'INCREASED') return item.trendDirection === 'increased';
-    if (filterCategory === 'DECREASED') return item.trendDirection === 'decreased';
-    if (filterCategory === 'STABLE') return item.trendDirection === 'stable';
-    if (filterCategory === 'NEW') return item.category === 'newly_appearing';
-    if (filterCategory === 'OMITTED') return item.category === 'discontinued_or_omitted';
-    return true;
-  });
+  const filteredItems = useMemo(() => {
+    return (items || []).filter(item => {
+      if (filterCategory === 'INCREASED') return item.trendDirection === 'increased';
+      if (filterCategory === 'DECREASED') return item.trendDirection === 'decreased';
+      if (filterCategory === 'STABLE') return item.trendDirection === 'stable';
+      if (filterCategory === 'NEW') return item.category === 'newly_appearing';
+      if (filterCategory === 'OMITTED') return item.category === 'discontinued_or_omitted';
+      return true;
+    });
+  }, [items, filterCategory]);
 
   const getTrendIcon = (item: LongitudinalItem) => {
     if (item.category === 'newly_appearing') {
@@ -178,16 +180,16 @@ export const LongitudinalComparison: React.FC<LongitudinalComparisonProps> = ({ 
 
       {/* Comparison Data Table */}
       <div className="data-table-container">
-        <table className="data-table">
+        <table className="data-table" aria-label="Longitudinal Report Comparison Table">
           <thead>
             <tr>
-              <th>Clinical Parameter</th>
-              <th>Previous Report</th>
-              <th>Current Report</th>
-              <th>Delta (Change)</th>
-              <th>% Variation</th>
-              <th>Trend Direction</th>
-              <th>Reference Range Shift</th>
+              <th scope="col">Clinical Parameter</th>
+              <th scope="col">Previous Report</th>
+              <th scope="col">Current Report</th>
+              <th scope="col">Delta (Change)</th>
+              <th scope="col">% Variation</th>
+              <th scope="col">Trend Direction</th>
+              <th scope="col">Reference Range Shift</th>
             </tr>
           </thead>
           <tbody>

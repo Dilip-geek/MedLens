@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Table, 
   Search, 
@@ -33,24 +33,27 @@ export const StructuredRecordView: React.FC<StructuredRecordViewProps> = ({
   const [panelFilter, setPanelFilter] = useState('ALL');
   const [rangeFilter, setRangeFilter] = useState<'ALL' | 'OUT_OF_RANGE' | 'NORMAL' | 'NO_RANGE'>('ALL');
 
-  const panels = Object.keys(record.panelGroups || {});
+  const panels = useMemo(() => Object.keys(record.panelGroups || {}), [record.panelGroups]);
 
-  // Filtering
-  const filteredParameters = (record.parameters || []).filter(p => {
-    const matchesSearch = 
-      p.canonicalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.rawName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.loinc && p.loinc.toLowerCase().includes(searchTerm.toLowerCase()));
+  // Memoized Filtering for optimal rendering performance
+  const filteredParameters = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return (record.parameters || []).filter(p => {
+      const matchesSearch = !term ||
+        p.canonicalName.toLowerCase().includes(term) ||
+        p.rawName.toLowerCase().includes(term) ||
+        (p.loinc && p.loinc.toLowerCase().includes(term));
 
-    const matchesPanel = panelFilter === 'ALL' || p.panel === panelFilter;
+      const matchesPanel = panelFilter === 'ALL' || p.panel === panelFilter;
 
-    let matchesRange = true;
-    if (rangeFilter === 'OUT_OF_RANGE') matchesRange = p.isOutOfRange;
-    if (rangeFilter === 'NORMAL') matchesRange = p.status === 'NORMAL';
-    if (rangeFilter === 'NO_RANGE') matchesRange = p.status === 'NO_RANGE_REPORTED';
+      let matchesRange = true;
+      if (rangeFilter === 'OUT_OF_RANGE') matchesRange = p.isOutOfRange;
+      if (rangeFilter === 'NORMAL') matchesRange = p.status === 'NORMAL';
+      if (rangeFilter === 'NO_RANGE') matchesRange = p.status === 'NO_RANGE_REPORTED';
 
-    return matchesSearch && matchesPanel && matchesRange;
-  });
+      return matchesSearch && matchesPanel && matchesRange;
+    });
+  }, [record.parameters, searchTerm, panelFilter, rangeFilter]);
 
   const getStatusBadge = (param: ExtractedParameter) => {
     switch (param.status) {
@@ -166,16 +169,16 @@ export const StructuredRecordView: React.FC<StructuredRecordViewProps> = ({
 
       {/* Main Parameters Table */}
       <div className="data-table-container">
-        <table className="data-table">
+        <table className="data-table" aria-label="Structured Laboratory Parameters">
           <thead>
             <tr>
-              <th>Clinical Parameter</th>
-              <th>Observed Value</th>
-              <th>Reported Reference Range</th>
-              <th>Status & Interpretation</th>
-              <th>Source / Provenance</th>
-              <th style={{ textAlign: 'center' }}>Traceability</th>
-              <th style={{ textAlign: 'center' }}>Review</th>
+              <th scope="col">Clinical Parameter</th>
+              <th scope="col">Observed Value</th>
+              <th scope="col">Reported Reference Range</th>
+              <th scope="col">Status & Interpretation</th>
+              <th scope="col">Source / Provenance</th>
+              <th scope="col" style={{ textAlign: 'center' }}>Traceability</th>
+              <th scope="col" style={{ textAlign: 'center' }}>Review</th>
             </tr>
           </thead>
           <tbody>

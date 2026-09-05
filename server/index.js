@@ -19,9 +19,35 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Constants for input safety & rate protection
+const MAX_REPORT_LENGTH = 500000; // 500 KB character limit
+const MAX_CHAT_MESSAGE_LENGTH = 4000;
+const MAX_HISTORY_ITEMS = 30;
+
+// Security headers middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Utility for HTML escaping to prevent XSS in export generation
+export function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 // Health and environment status
 app.get('/api/health', (req, res) => {
@@ -59,10 +85,20 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message text is required.' });
     }
 
+    if (message.length > MAX_CHAT_MESSAGE_LENGTH) {
+      return res.status(400).json({ 
+        error: `Message exceeds maximum allowed length of ${MAX_CHAT_MESSAGE_LENGTH} characters.` 
+      });
+    }
+
+    const safeHistory = Array.isArray(conversationHistory) 
+      ? conversationHistory.slice(-MAX_HISTORY_ITEMS) 
+      : [];
+
     const response = await processChatMessage({
       apiKey,
       message: message.trim(),
-      conversationHistory,
+      conversationHistory: safeHistory,
       record
     });
 
@@ -92,6 +128,12 @@ app.post('/api/process', async (req, res) => {
     if (!currentReport || typeof currentReport !== 'string' || currentReport.trim().length === 0) {
       return res.status(400).json({
         error: 'Current medical report text is required.'
+      });
+    }
+
+    if (currentReport.length > MAX_REPORT_LENGTH || (previousReport && previousReport.length > MAX_REPORT_LENGTH)) {
+      return res.status(400).json({
+        error: `Report text exceeds maximum allowed limit of ${MAX_REPORT_LENGTH} characters.`
       });
     }
 
@@ -298,11 +340,11 @@ app.post('/api/process', async (req, res) => {
 app.post('/api/export-summary', (req, res) => {
   try {
     const { record } = req.body;
-    if (!record) {
+    if (!record || typeof record !== 'object') {
       return res.status(400).json({ error: 'Record is required' });
     }
 
-    const { intake, parameters, conflicts, longitudinal, summary, disclaimer } = record;
+    const { intake = {}, parameters = [], conflicts = [], summary = {}, disclaimer = MEDICAL_DISCLAIMER } = record;
 
     res.json({
       success: true,
@@ -315,16 +357,16 @@ app.post('/api/export-summary', (req, res) => {
 
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
             <h2 style="font-size: 16px; margin-top: 0; color: #0f172a;">Patient Profile</h2>
-            <p><strong>Name:</strong> ${intake.name || 'N/A'} | <strong>Age:</strong> ${intake.age || 'N/A'} | <strong>Sex:</strong> ${intake.sex || 'N/A'}</p>
-            <p><strong>Reported Symptoms:</strong> ${intake.symptoms || 'None'}</p>
-            <p><strong>Known Conditions:</strong> ${intake.conditions || 'None'}</p>
-            <p><strong>Known Allergies:</strong> ${intake.allergies || 'None'}</p>
-            <p><strong>Current Medications:</strong> ${intake.medications || 'None'}</p>
+            <p><strong>Name:</strong> ${escapeHtml(intake.name || 'N/A')} | <strong>Age:</strong> ${escapeHtml(intake.age || 'N/A')} | <strong>Sex:</strong> ${escapeHtml(intake.sex || 'N/A')}</p>
+            <p><strong>Reported Symptoms:</strong> ${escapeHtml(intake.symptoms || 'None')}</p>
+            <p><strong>Known Conditions:</strong> ${escapeHtml(intake.conditions || 'None')}</p>
+            <p><strong>Known Allergies:</strong> ${escapeHtml(intake.allergies || 'None')}</p>
+            <p><strong>Current Medications:</strong> ${escapeHtml(intake.medications || 'None')}</p>
           </div>
 
           <div style="margin-bottom: 24px;">
             <h2 style="font-size: 16px; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">Patient-Friendly Summary</h2>
-            <p style="color: #334155;">${summary.narrative}</p>
+            <p style="color: #334155;">${escapeHtml(summary.narrative || '')}</p>
           </div>
 
           <div style="margin-bottom: 24px;">
@@ -341,10 +383,10 @@ app.post('/api/export-summary', (req, res) => {
               <tbody>
                 ${parameters.map(p => `
                   <tr style="${p.isOutOfRange ? 'background: #fff1f2;' : ''}">
-                    <td style="padding: 8px; border: 1px solid #e2e8f0;">${p.canonicalName}</td>
-                    <td style="padding: 8px; border: 1px solid #e2e8f0;"><strong>${p.observedValue}</strong> ${p.unit}</td>
-                    <td style="padding: 8px; border: 1px solid #e2e8f0;">${p.rawRangeText || 'None reported'}</td>
-                    <td style="padding: 8px; border: 1px solid #e2e8f0;">${p.statusLabel}</td>
+                    <td style="padding: 8px; border: 1px solid #e2e8f0;">${escapeHtml(p.canonicalName)}</td>
+                    <td style="padding: 8px; border: 1px solid #e2e8f0;"><strong>${escapeHtml(p.observedValue)}</strong> ${escapeHtml(p.unit || '')}</td>
+                    <td style="padding: 8px; border: 1px solid #e2e8f0;">${escapeHtml(p.rawRangeText || 'None reported')}</td>
+                    <td style="padding: 8px; border: 1px solid #e2e8f0;">${escapeHtml(p.statusLabel)}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -355,19 +397,19 @@ app.post('/api/export-summary', (req, res) => {
             <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
               <h3 style="color: #b45309; margin-top: 0; font-size: 15px;">Flagged Inconsistencies for Doctor Discussion</h3>
               <ul>
-                ${conflicts.map(c => `<li><strong>${c.title}:</strong> ${c.description}</li>`).join('')}
+                ${conflicts.map(c => `<li><strong>${escapeHtml(c.title)}:</strong> ${escapeHtml(c.description)}</li>`).join('')}
               </ul>
             </div>
           ` : ''}
 
           <div style="margin-top: 30px; padding: 12px; background: #f8fafc; border-left: 4px solid #0f766e; font-size: 11px; color: #64748b;">
-            <strong>Medical Disclaimer:</strong> ${disclaimer}
+            <strong>Medical Disclaimer:</strong> ${escapeHtml(disclaimer)}
           </div>
         </div>
       `
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to generate export summary.' });
   }
 });
 

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Activity, 
   FileText, 
   History, 
   AlertTriangle, 
+  AlertCircle,
   HelpCircle, 
   Table, 
   Sparkles, 
@@ -58,6 +59,7 @@ export const App: React.FC = () => {
 
   // Processing & Pipeline states
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [totalDurationMs, setTotalDurationMs] = useState<number>(0);
   const [record, setRecord] = useState<ProcessedRecord | null>(null);
@@ -73,10 +75,30 @@ export const App: React.FC = () => {
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Apply theme to document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Clean up abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const loadPreset = useCallback((preset: ClinicalPreset) => {
+    setIntake(preset.intake);
+    setCurrentReport(preset.currentReport);
+    setPreviousReport(preset.previousReport);
+    setRecord(null);
+    setPipelineStages([]);
+    setPipelineError(null);
+  }, []);
 
   // Load presets on mount
   useEffect(() => {
@@ -85,38 +107,36 @@ export const App: React.FC = () => {
       .then(data => {
         if (data.presets && data.presets.length > 0) {
           setPresets(data.presets);
-          // Automatically load Case 1 by default so the app opens with rich sample data!
           loadPreset(data.presets[0]);
         }
       })
       .catch(err => console.warn('Could not load presets:', err));
+  }, [loadPreset]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
 
-  const toggleTheme = () => {
-    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  const loadPreset = (preset: ClinicalPreset) => {
-    setIntake(preset.intake);
-    setCurrentReport(preset.currentReport);
-    setPreviousReport(preset.previousReport);
-    // Clear previous record so user can run pipeline
-    setRecord(null);
-    setPipelineStages([]);
-  };
-
-  const handleSelectPreset = (presetId: string) => {
+  const handleSelectPreset = useCallback((presetId: string) => {
     const found = presets.find(p => p.id === presetId);
     if (found) {
       loadPreset(found);
     }
-  };
+  }, [presets, loadPreset]);
 
   // Run MedLens Pipeline
-  const handleRunPipeline = async () => {
+  const handleRunPipeline = useCallback(async () => {
     if (!currentReport.trim()) return;
 
+    // Abort previous in-flight request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     setIsLoading(true);
+    setPipelineError(null);
     setPipelineStages([]);
     setSelectedParamForTrace(null);
 
@@ -126,6 +146,7 @@ export const App: React.FC = () => {
         headers: {
           'Content-Type': 'application/json'
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           intake,
           currentReport,
@@ -141,132 +162,128 @@ export const App: React.FC = () => {
         setPipelineStages(data.stages || []);
         setTotalDurationMs(data.executionTimeMs || 0);
         setActiveTab('record');
+        setPipelineError(null);
       } else {
-        alert(data.error || 'Failed to process report');
+        setPipelineError(data.error || 'Failed to process report');
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       console.error('Pipeline error:', err);
-      alert('Error communicating with backend API: ' + err.message);
+      setPipelineError('Error communicating with backend API: ' + err.message);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [intake, currentReport, previousReport, apiKey]);
 
   // Human Review: Update Parameter
-  const handleSaveParameterEdit = (updatedParam: ExtractedParameter, description: string) => {
-    if (!record) return;
-
-    const newParameters = record.parameters.map(p => 
-      p.id === updatedParam.id ? updatedParam : p
-    );
-
-    // Rebuild panel groups
-    const newPanelGroups: Record<string, ExtractedParameter[]> = {};
-    for (const p of newParameters) {
-      if (!newPanelGroups[p.panel]) newPanelGroups[p.panel] = [];
-      newPanelGroups[p.panel].push(p);
-    }
-
-    // Add to audit log
-    const auditItem = {
-      timestamp: new Date().toISOString(),
-      action: 'HUMAN_REVIEW_CORRECTION',
-      description,
-      actor: 'User / Clinician',
-      targetId: updatedParam.id
-    };
-
-    setRecord({
-      ...record,
-      parameters: newParameters,
-      panelGroups: newPanelGroups,
-      auditLog: [auditItem, ...record.auditLog]
+  const handleSaveParameterEdit = useCallback((updatedParam: ExtractedParameter, description: string) => {
+    setRecord(prev => {
+      if (!prev) return null;
+      const newParameters = prev.parameters.map(p => 
+        p.id === updatedParam.id ? updatedParam : p
+      );
+      const newPanelGroups: Record<string, ExtractedParameter[]> = {};
+      for (const p of newParameters) {
+        if (!newPanelGroups[p.panel]) newPanelGroups[p.panel] = [];
+        newPanelGroups[p.panel].push(p);
+      }
+      const auditItem = {
+        timestamp: new Date().toISOString(),
+        action: 'HUMAN_REVIEW_CORRECTION',
+        description,
+        actor: 'User / Clinician',
+        targetId: updatedParam.id
+      };
+      return {
+        ...prev,
+        parameters: newParameters,
+        panelGroups: newPanelGroups,
+        auditLog: [auditItem, ...prev.auditLog]
+      };
     });
-  };
+  }, []);
 
   // Mark Parameter Verified
-  const handleVerifyParameter = (paramId: string) => {
-    if (!record) return;
-
-    const newParameters = record.parameters.map(p => {
-      if (p.id === paramId) {
-        return {
-          ...p,
-          isVerified: !p.isVerified,
-          sourceType: (!p.isVerified ? 'human_verified' : 'current_report') as any,
-          sourceLabel: !p.isVerified ? 'Human Verified' : 'Current Report'
-        };
-      }
-      return p;
+  const handleVerifyParameter = useCallback((paramId: string) => {
+    setRecord(prev => {
+      if (!prev) return null;
+      const newParameters = prev.parameters.map(p => {
+        if (p.id === paramId) {
+          return {
+            ...p,
+            isVerified: !p.isVerified,
+            sourceType: (!p.isVerified ? 'human_verified' : 'current_report') as any,
+            sourceLabel: !p.isVerified ? 'Human Verified' : 'Current Report'
+          };
+        }
+        return p;
+      });
+      const targetParam = newParameters.find(p => p.id === paramId);
+      const auditItem = {
+        timestamp: new Date().toISOString(),
+        action: 'VERIFICATION_TOGGLE',
+        description: `${targetParam?.canonicalName} marked as ${targetParam?.isVerified ? 'Human Verified' : 'AI Extracted'}.`,
+        actor: 'User / Clinician'
+      };
+      return {
+        ...prev,
+        parameters: newParameters,
+        auditLog: [auditItem, ...prev.auditLog]
+      };
     });
-
-    const targetParam = newParameters.find(p => p.id === paramId);
-    const auditItem = {
-      timestamp: new Date().toISOString(),
-      action: 'VERIFICATION_TOGGLE',
-      description: `${targetParam?.canonicalName} marked as ${targetParam?.isVerified ? 'Human Verified' : 'AI Extracted'}.`,
-      actor: 'User / Clinician'
-    };
-
-    setRecord({
-      ...record,
-      parameters: newParameters,
-      auditLog: [auditItem, ...record.auditLog]
-    });
-  };
+  }, []);
 
   // Resolve Inconsistency
-  const handleResolveConflict = (conflictId: string, resolutionNotes: string, resolvedBy: string) => {
-    if (!record) return;
-
-    const newConflicts = record.conflicts.map(c => {
-      if (c.id === conflictId) {
-        return {
-          ...c,
-          resolved: true,
-          resolutionNotes,
-          resolvedBy,
-          resolvedAt: new Date().toISOString()
-        };
-      }
-      return c;
+  const handleResolveConflict = useCallback((conflictId: string, resolutionNotes: string, resolvedBy: string) => {
+    setRecord(prev => {
+      if (!prev) return null;
+      const newConflicts = prev.conflicts.map(c => {
+        if (c.id === conflictId) {
+          return {
+            ...c,
+            resolved: true,
+            resolutionNotes,
+            resolvedBy,
+            resolvedAt: new Date().toISOString()
+          };
+        }
+        return c;
+      });
+      const targetConflict = prev.conflicts.find(c => c.id === conflictId);
+      const auditItem = {
+        timestamp: new Date().toISOString(),
+        action: 'CONFLICT_RESOLVED',
+        description: `Conflict "${targetConflict?.title}" resolved: ${resolutionNotes}`,
+        actor: resolvedBy
+      };
+      return {
+        ...prev,
+        conflicts: newConflicts,
+        auditLog: [auditItem, ...prev.auditLog]
+      };
     });
-
-    const targetConflict = record.conflicts.find(c => c.id === conflictId);
-    const auditItem = {
-      timestamp: new Date().toISOString(),
-      action: 'CONFLICT_RESOLVED',
-      description: `Conflict "${targetConflict?.title}" resolved: ${resolutionNotes}`,
-      actor: resolvedBy
-    };
-
-    setRecord({
-      ...record,
-      conflicts: newConflicts,
-      auditLog: [auditItem, ...record.auditLog]
-    });
-  };
+  }, []);
 
   // Answer Clarification Question
-  const handleAnswerQuestion = (questionId: string, answer: string) => {
-    if (!record) return;
-
-    const newQuestions = record.clarificationQuestions.map(q => {
-      if (q.id === questionId) {
-        return {
-          ...q,
-          userResponse: answer,
-          isAnswered: !!answer.trim()
-        };
-      }
-      return q;
+  const handleAnswerQuestion = useCallback((questionId: string, answer: string) => {
+    setRecord(prev => {
+      if (!prev) return null;
+      const newQuestions = prev.clarificationQuestions.map(q => {
+        if (q.id === questionId) {
+          return {
+            ...q,
+            userResponse: answer,
+            isAnswered: !!answer.trim()
+          };
+        }
+        return q;
+      });
+      return {
+        ...prev,
+        clarificationQuestions: newQuestions
+      };
     });
-
-    setRecord({
-      ...record,
-      clarificationQuestions: newQuestions
-    });
-  };
+  }, []);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -287,6 +304,38 @@ export const App: React.FC = () => {
       {/* Main Content Area */}
       <main style={{ flex: 1, maxWidth: 1400, width: '100%', margin: '0 auto', padding: '24px 20px' }}>
         
+        {/* Pipeline Error Banner */}
+        {pipelineError && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid var(--danger)',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 20,
+              color: 'var(--danger)',
+              fontSize: 14
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <AlertCircle size={18} />
+              <span>{pipelineError}</span>
+            </div>
+            <button
+              onClick={() => setPipelineError(null)}
+              className="btn btn-sm btn-secondary"
+              style={{ padding: '4px 10px', fontSize: 12 }}
+              aria-label="Dismiss error"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Pipeline Stepper Animation */}
         <PipelineProgress
           stages={pipelineStages}
@@ -481,7 +530,7 @@ export const App: React.FC = () => {
         onClose={() => setIsPrintOpen(false)}
       />
 
-      {/* Grounded Clinical AI Chat Drawer */}
+      {/* Grounded MedLens AI Clinical Assistant Drawer */}
       <AIChatDrawer
         record={record}
         isOpen={isChatOpen}
@@ -489,35 +538,6 @@ export const App: React.FC = () => {
         onOpen={() => setIsChatOpen(true)}
         apiKey={apiKey}
       />
-
-      {/* Floating Chat Trigger Button */}
-      <button
-        onClick={() => setIsChatOpen(true)}
-        className="btn"
-        style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          zIndex: 80,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '12px 20px',
-          borderRadius: 30,
-          background: 'linear-gradient(135deg, var(--teal-600), var(--cyan-500))',
-          color: '#ffffff',
-          border: 'none',
-          boxShadow: '0 8px 24px rgba(13, 148, 136, 0.4)',
-          fontWeight: 700,
-          fontSize: 14,
-          cursor: 'pointer'
-        }}
-        title="Open MedLens AI Clinical Assistant"
-        aria-label="Open AI Assistant"
-      >
-        <Sparkles size={18} />
-        <span>Ask Clinical AI</span>
-      </button>
 
       {/* Footer */}
       <footer style={{
