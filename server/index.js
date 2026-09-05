@@ -430,7 +430,12 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`MedLens Single-Service Web Application running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`MedLens Single-Service Web Application running on port ${PORT}`);
+  });
+}
+
+export default app;
+
 
